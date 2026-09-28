@@ -1,0 +1,23 @@
+{
+  "zhFix": {
+    "Screenshot_2026_0922_070427": { "perceptible": "可见的，可觉察的" },
+    "Screenshot_2026_0922_071358": { "prompt": "促使；迅捷的" },
+    "Screenshot_2026_0922_071131": { "minimize": "将...减到最低程度；贬低" },
+    "Screenshot_2026_0922_071206": { "conceal": "隐藏；隐瞒" }
+  },
+  "inserts": {
+    "Screenshot_2026_0922_070651": [["perverse", "nimble", "敏捷的；敏锐的"]],
+    "Screenshot_2026_0922_071358": [["acquiescence", "abstract", "笼统的；抽象的，深奥的；摘要；提取；分散注意力"]],
+    "Screenshot_2026_0922_071507": [
+      ["stun", "abundance", "大量"],
+      ["stun", "oblivious", "遗忘的"],
+      ["stun", "privilege", "特权"],
+      ["stun", "acme", "顶点，极点"],
+      ["stun", "heed", "注意，留心"],
+      ["stun", "demanding", "苛求的"],
+      ["stun", "whit", "一点点，一些"],
+      ["stun", "affinity", "紧密联系；类同；吸引力"],
+      ["stun", "trauma", "创伤"]
+    ]
+  }
+}
