@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>跑步</title>
+<style>
+  :root{
+    --green:#12D59D; --yellow:#EEC655; --cmpG:#52BF96; --cmpB:#628CEE;
+    --dark:#262626; --head:#333333; --gray:#999999; --bg:#F9F9F9;
+    --line:#F1F1F1; --track:#F7F8F8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{background:var(--bg);}
+  body{
+    font-family:-apple-system,"MiSans","HarmonyOS Sans SC","PingFang SC","Noto Sans CJK SC",Roboto,sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  #page{width:100%;min-height:100vh;background:var(--bg);overflow:hidden;}
+
+  /* ============ 状态栏 ============ */
+  .statusbar{position:relative;height:42px;background:#fff;display:flex;align-items:center;padding:0 20px 0 24px;}
+  .sb-time{font-size:17px;font-weight:700;color:#1a1a1a;letter-spacing:.2px;}
+  .sb-ico{margin-left:10px;display:flex;align-items:center;}
+  .sb-right{margin-left:auto;display:flex;align-items:center;gap:5px;}
+  .sb-right .g5{font-size:12px;font-weight:700;color:#000;margin-right:1px;}
+  .capsule{position:absolute;left:50%;top:3px;transform:translateX(-50%);height:36px;width:181px;background:#000;
+    border-radius:18px;display:flex;align-items:center;padding:0 15px 0 5px;}
+  .capsule .capp{width:26px;height:26px;border-radius:8px;background:#fff;flex:none;overflow:hidden;}
+  .capsule .capp svg{display:block;}
+  .capsule .c1{color:#fff;font-size:14px;font-weight:700;margin-left:7px;}
+  .capsule .c2{color:#fff;font-size:14px;font-weight:700;margin-left:auto;}
+  .battery{position:relative;width:26px;height:13px;background:#D9D9D9;border-radius:3.5px;overflow:hidden;}
+  .battery .fill{position:absolute;left:1.5px;top:1.5px;bottom:1.5px;background:#8C8C8C;border-radius:2.5px;}
+  .battery .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:8.5px;font-weight:700;color:#fff;}
+
+  /* ============ 顶部标题 ============ */
+  .header{position:relative;height:54px;background:#fff;display:flex;align-items:center;}
+  .header .back{position:absolute;left:22px;top:50%;transform:translateY(-50%);width:26px;height:34px;
+    display:flex;align-items:center;justify-content:center;}
+  .header .title{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    display:flex;align-items:center;gap:7px;font-size:18px;font-weight:700;color:#1a1a1a;}
+  .header .share{margin-left:auto;margin-right:15px;font-size:17px;font-weight:600;color:var(--green);}
+
+  /* ============ 周/月/年 tabs ============ */
+  .tabs{height:64px;background:#fff;display:flex;}
+  .tab{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;}
+  .tab .c{font-size:20px;font-weight:700;color:#1a1a1a;line-height:24px;}
+  .tab .s{font-size:11px;color:#999;line-height:15px;}
+  .tab.sel .c{color:var(--green);}
+  .tab.sel .s{background:var(--green);color:#fff;font-weight:600;border-radius:14px;padding:1px 10px;line-height:16px;}
+  .tab:not(:first-child)::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:1px;height:37px;background:#F0F0F0;}
+
+  /* ============ 月份切换 ============ */
+  .monthrow{position:relative;height:56px;background:#fff;display:flex;align-items:center;justify-content:center;}
+  .monthrow .m{font-size:16px;font-weight:700;color:#333;}
+  .monthrow .arr{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;}
+  .monthrow .arr.l{left:calc(50% - 97px);}
+  .monthrow .arr.r{left:calc(50% + 67px);}
+  .tri{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:0;height:0;}
+  .tri.left{border-top:7px solid transparent;border-bottom:7px solid transparent;border-right:10px solid var(--green);}
+  .tri.right{border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:10px solid #B9B9B9;}
+
+  /* ============ 图表 ============ */
+  .chartwrap{background:#fff;height:241px;}
+  #chart{display:block;width:100%;height:241px;}
+
+  /* ============ 卡片通用 ============ */
+  .gap{height:7px;}
+  .card{background:#fff;position:relative;}
+
+  /* 统计卡片 */
+  .stats .srow{height:107px;position:relative;}
+  .stats .srow + .srow::before{content:'';position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line);}
+  .stats .hd{position:absolute;top:22px;font-size:15px;font-weight:500;color:var(--head);}
+  .stats .val{position:absolute;top:52px;display:flex;align-items:baseline;}
+  .stats .big{font-size:30px;font-weight:800;color:var(--dark);letter-spacing:.3px;}
+  .stats .unit{font-size:12px;color:var(--gray);margin-left:7px;}
+  .stats .vdiv{position:absolute;left:205px;top:25px;width:1px;height:57px;background:#F0F0F0;}
+  .stats .colL{left:20px;} .stats .colR{left:225px;}
+
+  /* 对比卡片 */
+  .cmp{height:127px;}
+  .cmp .ct{position:absolute;top:20px;left:16px;right:16px;font-size:15px;font-weight:700;color:var(--head);}
+  .brow{position:absolute;left:16px;right:16px;height:18px;display:flex;align-items:center;}
+  .brow.b1{top:56px;} .brow.b2{top:92px;}
+  .brow .bl{width:45px;flex:none;font-size:14px;color:var(--head);font-weight:500;}
+  .brow .btrack{flex:1;height:18px;background:var(--track);border-radius:4px;position:relative;overflow:hidden;}
+  .brow .bfill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;}
+  .brow .bv{width:76px;flex:none;margin-left:8px;font-size:15px;font-weight:700;color:var(--head);}
+
+  /* 百分位卡片 */
+  .pct{padding:20px 16px 34px;}
+  .pct .p1{font-size:15px;font-weight:700;color:var(--head);}
+  .pct .p2{margin-top:14px;display:flex;align-items:baseline;}
+  .pct .pnum{font-size:30px;font-weight:800;color:var(--dark);letter-spacing:.3px;}
+  .pct .punit{font-size:15px;color:#555;margin-left:2px;font-weight:500;}
+  .pct .cir{position:absolute;right:13px;top:21px;width:58px;height:58px;}
+  .pct .badge{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;background:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;}
+
+  /* ============ 编辑器 ============ */
+  #editor{display:none;position:fixed;inset:0;background:#F4F5F7;z-index:99;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;padding:14px 14px 40px;}
+  #editor.show{display:block;}
+  #editor h2{font-size:18px;font-weight:700;color:#222;margin:6px 0 2px;}
+  #editor .hint{font-size:12px;color:#999;margin-bottom:12px;}
+  #editor .sec{background:#fff;border-radius:10px;padding:12px;margin-bottom:10px;}
+  #editor .sec h3{font-size:14px;font-weight:700;color:#333;margin-bottom:8px;}
+  #editor .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+  #editor label{font-size:13px;color:#666;flex:none;}
+  #editor input[type=text]{border:1px solid #ddd;border-radius:6px;padding:7px 8px;font-size:14px;color:#222;flex:1;min-width:40px;-webkit-user-select:text;user-select:text;}
+  #editor input.short{flex:none;width:70px;}
+  #editor input.mid{flex:none;width:110px;}
+  #editor .dgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
+  #editor .dgrid .dcell{display:flex;align-items:center;gap:3px;}
+  #editor .dgrid span{font-size:11px;color:#999;flex:none;}
+  #editor .dgrid input{width:100%;border:1px solid #ddd;border-radius:6px;padding:5px 4px;font-size:12px;color:#222;-webkit-user-select:text;user-select:text;}
+  #editor .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:#333;margin-bottom:8px;}
+  #editor .btn{display:block;width:100%;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:600;margin-top:4px;}
+  #editor .btn.primary{background:var(--green);color:#fff;}
+  #editor .btn.plain{background:#fff;color:#333;border:1px solid #ddd;}
+  #editor .btnrow{display:flex;gap:8px;}
+</style>
+</head>
+<body>
+<div id="page">
+
+  <!-- 状态栏 -->
+  <div class="statusbar" id="statusbar">
+    <span class="sb-time" id="sbTime">21:03</span>
+    <span class="sb-ico">
+      <svg width="15" height="15" viewBox="0 0 15 15">
+        <rect x="6.6" y="0.5" width="1.8" height="1.8" rx="0.5" fill="#C9C9C9"/>
+        <circle cx="7.5" cy="8.4" r="6.1" fill="#ECECEC"/>
+        <line x1="7.5" y1="8.4" x2="7.5" y2="4.8" stroke="#1a1a1a" stroke-width="1.1" stroke-linecap="round"/>
+        <line x1="7.5" y1="8.4" x2="10.2" y2="9.8" stroke="#1a1a1a" stroke-width="1.1" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <span class="sb-ico">
+      <svg width="15" height="15" viewBox="0 0 15 15">
+        <rect width="15" height="15" rx="4" fill="#F1F2F6"/>
+        <rect x="3.2" y="3.2" width="8.6" height="8.6" rx="2.2" fill="#5B8DEF"/>
+        <rect x="5.6" y="5.6" width="4" height="4" rx="1" fill="#A8C6F8"/>
+      </svg>
+    </span>
+    <div class="capsule" id="sbCapsule">
+      <span class="capp">
+        <svg width="26" height="26" viewBox="0 0 26 26">
+          <rect width="26" height="26" fill="#fff"/>
+          <ellipse cx="9.2" cy="7.2" rx="2.1" ry="4.4" fill="#FFC300" transform="rotate(-14 9.2 7.2)"/>
+          <ellipse cx="15.6" cy="6.6" rx="1.9" ry="3.9" fill="#FFC300" transform="rotate(14 15.6 6.6)"/>
+          <ellipse cx="12.6" cy="15.4" rx="7.2" ry="6.6" fill="#FFC300"/>
+          <circle cx="10.6" cy="13.4" r="1.25" fill="#222"/>
+          <ellipse cx="9.4" cy="17.6" rx="1.1" ry="0.85" fill="#222"/>
+        </svg>
+      </span>
+      <span class="c1" id="sbPillText">已到店</span>
+      <span class="c2" id="sbPillTime">21:17</span>
+    </div>
+    <div class="sb-right">
+      <span class="g5">5G</span>
+      <svg width="15" height="13" viewBox="0 0 15 13">
+        <rect x="0" y="8.6" width="2.7" height="4.4" rx="0.8" fill="#000"/>
+        <rect x="4" y="6" width="2.7" height="7" rx="0.8" fill="#000"/>
+        <rect x="8" y="3.2" width="2.7" height="9.8" rx="0.8" fill="#000"/>
+        <rect x="12" y="0.4" width="2.7" height="12.6" rx="0.8" fill="#000"/>
+      </svg>
+      <svg width="16" height="12" viewBox="0 0 16 12">
+        <path d="M8 11.2 L1.1 4.1 C3 2.1 5.4 1 8 1 s5 1.1 6.9 3.1 Z" fill="#000"/>
+      </svg>
+      <div class="battery">
+        <div class="fill" id="sbBatFill"></div>
+        <div class="num" id="sbBatNum">31</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标题 -->
+  <div class="header">
+    <span class="back">
+      <svg width="13" height="22" viewBox="0 0 13 22" fill="none">
+        <polyline points="11,2 2,11 11,20" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="title">跑步
+      <svg width="11" height="7" viewBox="0 0 11 7" fill="none">
+        <polyline points="1,1 5.5,5.5 10,1" stroke="#7A7A7A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="share">分享</span>
+  </div>
+
+  <!-- tabs -->
+  <div class="tabs" id="tabs"></div>
+
+  <!-- 月份 -->
+  <div class="monthrow">
+    <span class="arr l" id="prevM"><span class="tri left"></span></span>
+    <span class="m" id="monthText">2026年9月</span>
+    <span class="arr r" id="nextM"><span class="tri right"></span></span>
+  </div>
+
+  <!-- 图表 -->
+  <div class="chartwrap"><svg id="chart" viewBox="0 0 411 241" preserveAspectRatio="none"></svg></div>
+
+  <div class="gap"></div>
+
+  <!-- 统计 -->
+  <div class="card stats">
+    <div class="srow">
+      <span class="hd colL">累计里程</span>
+      <span class="hd colR">累计次数</span>
+      <span class="vdiv"></span>
+      <div class="val colL"><span class="big" id="vKm">67.90</span><span class="unit">公里</span></div>
+      <div class="val colR"><span class="big" id="vCnt">23</span><span class="unit">次</span></div>
+    </div>
+    <div class="srow">
+      <span class="hd colL">累计时长</span>
+      <span class="hd colR">平均配速</span>
+      <span class="vdiv"></span>
+      <div class="val colL"><span class="big" id="vDur">15:05:47</span></div>
+      <div class="val colR"><span class="big" id="vPace">13'20"</span></div>
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- 对比 -->
+  <div class="card cmp">
+    <div class="ct" id="cmpTitle">本月跑步里程比上月少18.53公里</div>
+    <div class="brow b1">
+      <span class="bl">本月</span>
+      <div class="btrack"><div class="bfill" id="fillThis" style="background:var(--cmpG)"></div></div>
+      <span class="bv" id="valThis">67.9公里</span>
+    </div>
+    <div class="brow b2">
+      <span class="bl">上月</span>
+      <div class="btrack"><div class="bfill" id="fillLast" style="background:var(--cmpB)"></div></div>
+      <span class="bv" id="valLast">86.4公里</span>
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- 百分位 -->
+  <div class="card pct">
+    <div class="p1">本月的跑步里程已经超过了</div>
+    <div class="p2"><span class="pnum" id="vPct">82.8%</span><span class="punit">全国用户</span></div>
+    <div class="cir">
+      <svg width="58" height="58" viewBox="0 0 58 58">
+        <circle cx="29" cy="29" r="29" fill="#C9EBDA"/>
+        <rect x="-6" y="24" width="26" height="9" rx="4.5" fill="#A9DBC1" transform="rotate(-12 7 28)"/>
+        <rect x="38" y="26" width="26" height="9" rx="4.5" fill="#A9DBC1" transform="rotate(-12 51 30)"/>
+        <g transform="translate(13,10) scale(1.4)">
+          <path fill="#35BD8E" d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
+        </g>
+      </svg>
+      <span class="badge">
+        <svg width="20" height="20" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="9" fill="#fff" stroke="#12D59D" stroke-width="1.6"/>
+          <polyline points="5.5,11.5 8,8.5 10,10.2 14,6.5" fill="none" stroke="#12D59D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ 编辑器 ============ -->
+<div id="editor">
+  <h2>数据编辑</h2>
+  <div class="hint">在主页长按任意位置可再次打开本页 · 数据保存在本机</div>
+
+  <div class="sec">
+    <h3>月份</h3>
+    <div class="row">
+      <label>年</label><input type="text" class="short" id="eYear">
+      <label>月</label><input type="text" class="short" id="eMonth">
+      <button class="btn plain" style="width:auto;padding:7px 12px;margin:0" id="eApplyMonth">应用天数</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>每日里程（公里，留空或 0 表示当天没跑）</h3>
+    <div class="dgrid" id="eDaily"></div>
+  </div>
+
+  <div class="sec">
+    <h3>累计数据</h3>
+    <div class="row">
+      <label>累计里程</label><input type="text" class="mid" id="eKm">
+      <label>累计次数</label><input type="text" class="mid" id="eCnt">
+    </div>
+    <div class="row">
+      <label>累计时长</label><input type="text" class="mid" id="eDur">
+      <label>平均配速</label><input type="text" class="mid" id="ePace">
+    </div>
+    <div class="row">
+      <label>上月里程</label><input type="text" class="mid" id="eLast">
+      <label>超过全国</label><input type="text" class="short" id="ePct"><label>%</label>
+    </div>
+    <div class="row">
+      <button class="btn plain" style="width:auto;padding:7px 12px;margin:0" id="eAutoKm">总里程 = 每日之和</button>
+    </div>
+    <div class="chk"><input type="checkbox" id="eYellow" checked><label for="eYellow" style="color:#333">里程最高的一天用黄色柱显示</label></div>
+  </div>
+
+  <div class="sec">
+    <h3>状态栏（用于截图效果）</h3>
+    <div class="chk"><input type="checkbox" id="eSbShow" checked><label for="eSbShow" style="color:#333">显示模拟状态栏</label></div>
+    <div class="row">
+      <label>时间</label><input type="text" class="short" id="eSbTime">
+      <label>电量</label><input type="text" class="short" id="eSbBat">
+    </div>
+    <div class="chk"><input type="checkbox" id="eSbPill" checked><label for="eSbPill" style="color:#333">显示中间黑色胶囊</label></div>
+    <div class="row">
+      <label>胶囊文字</label><input type="text" class="mid" id="eSbPillText">
+      <label>胶囊时间</label><input type="text" class="short" id="eSbPillTime">
+    </div>
+  </div>
+
+  <button class="btn primary" id="eSave">保存并返回</button>
+  <div class="btnrow" style="margin-top:8px">
+    <button class="btn plain" id="eReset">恢复示例数据</button>
+    <button class="btn plain" id="eCancel">取消</button>
+  </div>
+</div>
+
+<script>
+/* ================= 数据 ================= */
+var LS_KEY = 'fakerun-data-v1';
+function defaultStore(){
+  return {
+    sb:{ show:true, time:'21:03', bat:'31', pill:true, pillText:'已到店', pillTime:'21:17' },
+    months:{
+      '2026-9':{
+        daily:{1:5.40, 2:1.95, 3:2.45, 4:15.85, 6:6.65, 16:5.35, 19:4.10, 20:1.90,
+               22:2.25, 24:2.40, 25:4.90, 26:2.80, 27:9.40, 29:2.50},
+        km:'67.90', cnt:'23', dur:'15:05:47', pace:"13'20\"",
+        last:'86.43', pct:'82.8', yellow:true
+      }
+    }
+  };
+}
+var store;
+try{ store = JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ store=null; }
+if(!store) store = defaultStore();
+var cur = { y:2026, m:9 };
+
+function saveStore(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(store)); }catch(e){} }
+function md(){ return store.months[cur.y+'-'+cur.m]; }
+function ensureMd(){
+  var k = cur.y+'-'+cur.m;
+  if(!store.months[k]){
+    store.months[k] = { daily:{}, km:'0.00', cnt:'0', dur:'00:00:00', pace:"0'00\"", last:'0', pct:'0', yellow:true };
+  }
+  return store.months[k];
+}
+function daysInMonth(y,m){ return new Date(y, m, 0).getDate(); }
+
+/* ================= 主页渲染 ================= */
+function fmt1(x){ return (Math.round(x*10)/10).toFixed(1); }
+function render(){
+  var d = ensureMd();
+  /* 状态栏 */
+  document.getElementById('statusbar').style.display = store.sb.show ? 'flex' : 'none';
+  document.getElementById('sbTime').textContent = store.sb.time;
+  document.getElementById('sbBatNum').textContent = store.sb.bat;
+  document.getElementById('sbBatFill').style.width = Math.max(0, Math.min(100, parseFloat(store.sb.bat)||0)) + '%';
+  document.getElementById('sbCapsule').style.display = store.sb.pill ? 'flex' : 'none';
+  document.getElementById('sbPillText').textContent = store.sb.pillText;
+  document.getElementById('sbPillTime').textContent = store.sb.pillTime;
+  /* tabs */
+  var tabs = [['总','总数据'],['周','本周数据'],['月','本月数据'],['年','一年数据']];
+  document.getElementById('tabs').innerHTML = tabs.map(function(t,i){
+    var sel = i===2 ? ' sel' : '';
+    return '<div class="tab'+sel+'"><span class="c">'+t[0]+'</span><span class="s">'+t[1]+'</span></div>';
+  }).join('');
+  /* 月份 */
+  document.getElementById('monthText').textContent = cur.y+'年'+cur.m+'月';
+  /* 统计 */
+  document.getElementById('vKm').textContent = d.km;
+  document.getElementById('vCnt').textContent = d.cnt;
+  document.getElementById('vDur').textContent = d.dur;
+  document.getElementById('vPace').textContent = d.pace;
+  /* 对比 */
+  var t = parseFloat(d.km)||0, l = parseFloat(d.last)||0;
+  var diff = Math.abs(l-t).toFixed(2);
+  document.getElementById('cmpTitle').textContent = '本月跑步里程比上月' + (t<l?'少':'多') + diff + '公里';
+  var mx = Math.max(t,l,0.0001);
+  document.getElementById('fillThis').style.width = (t/mx*100)+'%';
+  document.getElementById('fillLast').style.width = (l/mx*100)+'%';
+  document.getElementById('valThis').textContent = fmt1(t)+'公里';
+  document.getElementById('valLast').textContent = fmt1(l)+'公里';
+  /* 百分位 */
+  document.getElementById('vPct').textContent = d.pct+'%';
+  renderChart(d);
+}
+
+/* ================= 图表 ================= */
+function renderChart(d){
+  var days = daysInMonth(cur.y, cur.m);
+  var vals = [];
+  for(var i=1;i<=days;i++) vals.push(parseFloat(d.daily[i])||0);
+  var maxV = Math.max.apply(null, vals);
+  var top = Math.max(4, Math.ceil(maxV/4)*4);
+  var unit = 194/top;                 /* 0.00 线 y=208, 顶线 y=14 */
+  var plotL = 74.5, slot = (386.9-74.5)/(days-1||1);
+  var s = '';
+  /* 虚线网格 */
+  [14, 111, 208].forEach(function(y){
+    s += '<line x1="57" y1="'+y+'" x2="405" y2="'+y+'" stroke="#E3E3E3" stroke-width="1" stroke-dasharray="3.5 3.5"/>';
+  });
+  /* y 轴文字 */
+  [[top,14],[top/2,111],[0,208]].forEach(function(a){
+    s += '<text x="52" y="'+(a[1]+4)+'" text-anchor="end" font-size="12" fill="#999">'+a[0].toFixed(2)+'</text>';
+  });
+  /* 柱子 */
+  var hi = -1, hv = -1;
+  if(d.yellow!==false){ for(var i=0;i<vals.length;i++){ if(vals[i]>hv){hv=vals[i];hi=i;} } }
+  for(var i=0;i<vals.length;i++){
+    var v = vals[i]; if(v<=0) continue;
+    var cx = days===1 ? (plotL+386.9)/2 : plotL + i*slot;
+    var h = Math.max(2, v*unit);
+    var col = (i===hi && v===hv) ? '#EEC655' : '#12D59D';
+    s += '<rect x="'+(cx-1.1).toFixed(2)+'" y="'+(208-h).toFixed(2)+'" width="2.2" height="'+h.toFixed(2)+
+         '" rx="1.1" fill="'+col+'"/>';
+  }
+  /* x 轴刻度 */
+  for(var dd=1; dd<=Math.min(days,28); dd+=3){
+    var cx = days===1 ? (plotL+386.9)/2 : plotL + (dd-1)*slot;
+    s += '<text x="'+cx.toFixed(2)+'" y="223" text-anchor="middle" font-size="12" fill="#999">'+dd+'</text>';
+  }
+  document.getElementById('chart').innerHTML = s;
+}
+
+/* ================= 交互 ================= */
+document.getElementById('prevM').addEventListener('click', function(){
+  cur.m--; if(cur.m<1){cur.m=12;cur.y--;} saveStore(); render();
+});
+document.getElementById('nextM').addEventListener('click', function(){
+  cur.m++; if(cur.m>12){cur.m=1;cur.y++;} saveStore(); render();
+});
+
+/* 长按打开编辑器 */
+var lpTimer=null, lpFired=false, lpX=0, lpY=0;
+var page = document.getElementById('page');
+function lpClear(){ if(lpTimer){clearTimeout(lpTimer); lpTimer=null;} }
+page.addEventListener('touchstart', function(e){
+  lpFired=false;
+  lpX=e.touches[0].clientX; lpY=e.touches[0].clientY;
+  lpTimer=setTimeout(function(){ lpFired=true; openEditor(); },500);
+},{passive:true});
+page.addEventListener('touchmove', function(e){
+  if(Math.abs(e.touches[0].clientX-lpX)>10 || Math.abs(e.touches[0].clientY-lpY)>10) lpClear();
+},{passive:true});
+page.addEventListener('touchend', function(e){ lpClear(); if(lpFired){e.preventDefault();} });
+page.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+/* 桌面鼠标长按（调试用） */
+page.addEventListener('mousedown', function(e){
+  lpX=e.clientX; lpY=e.clientY;
+  lpTimer=setTimeout(function(){ openEditor(); },600);
+});
+page.addEventListener('mouseup', lpClear);
+page.addEventListener('mousemove', function(e){
+  if(e.buttons && (Math.abs(e.clientX-lpX)>10 || Math.abs(e.clientY-lpY)>10)) lpClear();
+});
+
+/* ================= 编辑器 ================= */
+function $(id){ return document.getElementById(id); }
+function openEditor(){
+  var d = ensureMd();
+  $('eYear').value = cur.y; $('eMonth').value = cur.m;
+  $('eKm').value = d.km; $('eCnt').value = d.cnt; $('eDur').value = d.dur;
+  $('ePace').value = d.pace; $('eLast').value = d.last; $('ePct').value = d.pct;
+  $('eYellow').checked = d.yellow!==false;
+  $('eSbShow').checked = !!store.sb.show; $('eSbTime').value = store.sb.time;
+  $('eSbBat').value = store.sb.bat; $('eSbPill').checked = !!store.sb.pill;
+  $('eSbPillText').value = store.sb.pillText; $('eSbPillTime').value = store.sb.pillTime;
+  buildDailyGrid(daysInMonth(cur.y,cur.m), d.daily);
+  $('editor').classList.add('show');
+  $('editor').scrollTop = 0;
+}
+function buildDailyGrid(n, daily){
+  var html='';
+  for(var i=1;i<=n;i++){
+    var v = daily[i]; if(v===0||v===undefined) v='';
+    html += '<div class="dcell"><span>'+i+'</span><input type="text" data-day="'+i+'" value="'+v+'"></div>';
+  }
+  $('eDaily').innerHTML = html;
+}
+$('eApplyMonth').addEventListener('click', function(){
+  var y = parseInt($('eYear').value)||cur.y, m = parseInt($('eMonth').value)||cur.m;
+  if(m<1)m=1; if(m>12)m=12;
+  cur.y=y; cur.m=m;
+  buildDailyGrid(daysInMonth(y,m), ensureMd().daily);
+});
+$('eAutoKm').addEventListener('click', function(){
+  var sum=0;
+  $('eDaily').querySelectorAll('input').forEach(function(inp){
+    sum += parseFloat(inp.value)||0;
+  });
+  $('eKm').value = sum.toFixed(2);
+});
+$('eSave').addEventListener('click', function(){
+  var y = parseInt($('eYear').value)||cur.y, m = parseInt($('eMonth').value)||cur.m;
+  if(m<1)m=1; if(m>12)m=12;
+  cur.y=y; cur.m=m;
+  var d = ensureMd();
+  d.km=$('eKm').value.trim()||'0.00'; d.cnt=$('eCnt').value.trim()||'0';
+  d.dur=$('eDur').value.trim()||'00:00:00'; d.pace=$('ePace').value.trim()||"0'00\"";
+  d.last=$('eLast').value.trim()||'0'; d.pct=$('ePct').value.trim()||'0';
+  d.yellow = $('eYellow').checked;
+  d.daily={};
+  $('eDaily').querySelectorAll('input').forEach(function(inp){
+    var v = parseFloat(inp.value);
+    if(v>0) d.daily[parseInt(inp.dataset.day)] = v;
+  });
+  store.sb.show=$('eSbShow').checked; store.sb.time=$('eSbTime').value.trim()||'21:03';
+  store.sb.bat=$('eSbBat').value.trim()||'100'; store.sb.pill=$('eSbPill').checked;
+  store.sb.pillText=$('eSbPillText').value.trim()||'已到店'; store.sb.pillTime=$('eSbPillTime').value.trim()||'';
+  saveStore();
+  $('editor').classList.remove('show');
+  render();
+});
+$('eCancel').addEventListener('click', function(){ $('editor').classList.remove('show'); });
+$('eReset').addEventListener('click', function(){
+  store = defaultStore(); saveStore();
+  cur = {y:2026,m:9};
+  $('editor').classList.remove('show');
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

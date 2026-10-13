@@ -157,9 +157,16 @@ let session = null;        // { mode:'study'|'review', words:[...], idx, reveale
 let editingId = null, pendingDelId = null, pendingImport = null;
 let wordFilter = '';
 
-function defaultState(){ return { version:1, words:[], settings:{ examDate:null, theme:'auto' }, daily:{}, times:[] }; }
+function defaultState(){ return { version:1, words:[], settings:{ examDate:null, theme:'auto', serverAddr:'' }, daily:{}, times:[], deletedEns:[] }; }
 function normalize(s){
-  s.settings = Object.assign({ examDate:null, theme:'auto' }, s.settings || {});
+  s.settings = Object.assign({ examDate:null, theme:'auto', serverAddr:'' }, s.settings || {});
+  s.settings.serverAddr = String(s.settings.serverAddr || '').trim();
+  // 删除墓碑：记录删除时间；词的 updatedAt 比删除晚（重新添加/编辑）则墓碑失效
+  s.deletedEns = (Array.isArray(s.deletedEns) ? s.deletedEns : []).map(x =>
+    typeof x === 'string' ? { en: x.trim().toLowerCase(), at: 0 }
+      : { en: String((x && x.en) || '').trim().toLowerCase(), at: Number(x && x.at) || 0 }
+  ).filter(x => x.en);
+  { const dm = new Map(); s.deletedEns.forEach(x => { const p = dm.get(x.en); if(!p || x.at > p.at) dm.set(x.en, x); }); s.deletedEns = [...dm.values()]; }
   s.daily = s.daily || {};
   s.times = (Array.isArray(s.times) ? s.times : []).filter(x => x && typeof x.seconds === 'number').map(x => ({
     date: String(x.date || todayStr()), seconds: x.seconds,
@@ -215,6 +222,7 @@ function flushState(){ // 关闭页面 / 切走 / 关机前把最新状态立即
   try{ fetch('/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(state), keepalive:true }).catch(()=>{}); }catch(_){}
 }
 async function detectServer(){
+  if(window.Beidan) return; // 手机APP：本地存储 + 主动同步，不走相对路径探测
   if(location.protocol !== 'http:' && location.protocol !== 'https:') return; // file:// 本地模式
   try{
     const r = await fetch('/api/state', { cache:'no-store' });
@@ -231,18 +239,46 @@ async function detectServer(){
   }catch(_){ /* 连接失败 → 本地模式 */ }
 }
 /* 手机APP：数据线连接（adb reverse 端口映射）后，点按钮与电脑合并同步 */
-async function usbSync(){
+/* 电脑地址：手机APP里可配置（如 192.168.1.5:8642）；留空 = 127.0.0.1:8642（数据线 adb reverse 端口映射） */
+function syncBase(){
+  const s = (state.settings.serverAddr || '').trim();
+  const host = s.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return host ? 'http://' + host : 'http://127.0.0.1:8642';
+}
+function setKeepAwake(on){ try{ if(window.Beidan && Beidan.keepScreenOn) Beidan.keepScreenOn(!!on); }catch(_){} }
+/* 手机APP：与电脑双向合并同步（同一 WiFi 直连，或数据线 adb reverse 后留空地址） */
+async function usbSync(silent){
+  const base = syncBase();
+  let merged = false;
   try{
-    const r = await fetch('http://127.0.0.1:8642/api/state', { cache:'no-store' });
+    const r = await fetch(base + '/api/state', { cache:'no-store' });
     if(!r.ok) throw new Error('empty');
     const s = await r.json();
-    if(s && Array.isArray(s.words) && s.words.length) state = mergeStates(state, normalize(s));
+    if(s && Array.isArray(s.words) && s.words.length){ state = mergeStates(state, normalize(s)); merged = true; }
     save();
-    try{ await fetch('http://127.0.0.1:8642/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(state) }); }catch(_){}
-    toast('同步完成：共 ' + state.words.length + ' 个单词');
+    try{ await fetch(base + '/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(state) }); }catch(_){}
+    if(!silent || merged) toast('同步完成：共 ' + state.words.length + ' 个单词');
     render();
-  }catch(_){ toast('未连接电脑：请先用数据线连接，并在电脑上双击「背单词.bat」'); }
+  }catch(_){
+    if(!silent) toast('同步失败：请确认电脑已双击运行「背单词.bat」、手机与电脑连同一个 WiFi、地址填写正确');
+  }
 }
+window.beidanSync = function(silent){ usbSync(!!silent); }; // APP 启动时自动静默同步
+/* APP 返回键：背诵中弹「退出本组？」确认框，弹窗开着就先关掉；其余交给系统退出 */
+window.beidanBack = function(){
+  if(!$('#modal').classList.contains('hidden')){ closeModal(); return 'handled'; }
+  if(session && currentView === (session.mode === 'review' ? 'review' : 'study')){
+    const q = document.querySelector('[data-action="quit"]');
+    if(q){ q.click(); return 'handled'; }
+  }
+  return 'none';
+};
+/* APP 前后台切换：暂停时结算计时（与 visibilitychange 同一套逻辑，幂等可重复调用） */
+window.beidanPause = function(){
+  if(session && session.lastResume){ session.elapsed += Date.now() - session.lastResume; session.lastResume = 0; saveSession(); }
+  flushState();
+};
+window.beidanResume = function(){ if(session && !session.lastResume) session.lastResume = Date.now(); };
 /* 双击 HTML 文件打开（file://）时：若同步服务在运行，自动与服务器双向合并。
    老用户的历史存在浏览器 file:// 存储区，与 http 地址互不相通，靠这一步迁移合并；以后两个入口随便用哪个都同步。 */
 async function localSync(){
@@ -258,6 +294,23 @@ async function localSync(){
     fetch('http://127.0.0.1:8642/api/state', { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(state) }).catch(()=>{});
   }catch(_){ /* 同步服务未运行，静默跳过 */ }
 }
+
+/* 定期拉取：手机 APP 同步后，电脑端 20 秒内自动合并显示，无需刷新页面 */
+async function pullServer(){
+  if(!SERVER || document.hidden) return;
+  const tag = document.activeElement && document.activeElement.tagName; // 正在输入时不打断
+  if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+  try{
+    const r = await fetch('/api/state', { cache:'no-store' });
+    if(!r.ok) return;
+    const s = await r.json();
+    if(!(s && Array.isArray(s.words))) return;
+    const before = JSON.stringify(state);
+    state = mergeStates(state, normalize(s));
+    if(JSON.stringify(state) !== before){ save(); render(); toast('已同步手机端的最新进度'); }
+  }catch(_){}
+}
+setInterval(pullServer, 20000);
 
 /* ================= 计划与复习推导 ================= */
 const unlearnedWords = () => state.words.filter(w => !w.learnedAt);
@@ -435,7 +488,11 @@ function timesCard(){
 }
 
 /* ================= 导入 ================= */
-function addWord(en, zh){ state.words.push({ id:uid(), en, zh, createdAt:todayStr(), learnedAt:null, star:false, updatedAt:Date.now(), reviewDone:[false,false,false,false] }); }
+function addWord(en, zh, ts){
+  const k = en.trim().toLowerCase();
+  state.deletedEns = (state.deletedEns || []).filter(x => x.en !== k); // 重新添加 → 墓碑失效
+  state.words.push({ id:uid(), en, zh, createdAt:todayStr(), learnedAt:null, star:false, updatedAt: ts || Date.now(), reviewDone:[false,false,false,false] });
+}
 function findWord(en){ const k = en.trim().toLowerCase(); return state.words.find(w => w.en.trim().toLowerCase() === k); }
 function onImportForm(f){
   const en = f.en.value.trim(), zh = f.zh.value.trim();
@@ -491,7 +548,7 @@ function renderNav(){
        <span class="ic">${icon}</span><span>${label}</span>${v === 'review' && dueG > 0 ? `<i class="badge">${dueG}</i>` : ''}
      </button>`).join('');
 }
-function go(v){ currentView = v; render(); window.scrollTo(0, 0); }
+function go(v){ currentView = v; render(); window.scrollTo(0, 0); setKeepAwake(!!session && currentView === (session.mode === 'review' ? 'review' : 'study')); } // APP 里背诵/复习时保持屏幕常亮
 function render(){
   renderNav();
   $('#main').innerHTML = ({ home:vHome, study:vStudyTab, review:vReviewTab, import:vImport, more:vMore })[currentView]();
@@ -749,8 +806,14 @@ function vMore(){
       <button class="btn ghost" data-action="import-file">⬆️ 导入备份文件</button>
     </div>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
-    <p class="muted" style="margin-top:10px"><b>推荐：实时同步</b> —— 双击应用文件夹里的「背单词.bat」，电脑浏览器会自动打开本页；手机连同一个 WiFi，用浏览器打开窗口里显示的地址并「添加到主屏幕」，两台设备实时共享同一份数据（就是把手机变成这个 APP）。</p>
-    ${window.Beidan ? '<button class="btn big" data-action="usb-sync" style="margin-top:10px">🔄 与电脑同步（数据线连接后点此）</button>' : ''}
+    ${window.Beidan ? `
+      <div class="row gap8" style="margin-top:10px">
+        <input id="serverAddr" placeholder="电脑地址，如 192.168.1.5:8642" value="${esc(state.settings.serverAddr || '')}" style="flex:1" inputmode="url" autocomplete="off">
+        <button class="btn ghost" data-action="serveraddr-save">保存</button>
+      </div>
+      <button class="btn big" data-action="usb-sync" style="margin-top:10px">🔄 立即与电脑同步</button>
+      <p class="muted" style="margin-top:8px"><b>三步设置（只需一次）</b>：① 电脑双击「背单词.bat」；② 手机连同一个 WiFi；③ 在上方填入电脑窗口里显示的地址（如 192.168.1.5:8642）并保存。之后 APP 每次打开都会自动同步，也可点上方按钮手动同步；电脑端的进度也会在约 20 秒内自动同步到手机。同步是<b>双向叠加合并</b>：两边新学的词、复习进度、重点标记、释义修改、删除操作都会合并，不会一边覆盖另一边。</p>`
+    : '<p class="muted" style="margin-top:10px"><b>推荐：实时同步</b> —— 双击应用文件夹里的「背单词.bat」，电脑浏览器会自动打开本页；手机连同一个 WiFi，用浏览器打开窗口里显示的地址并「添加到主屏幕」，两台设备实时共享同一份数据（就是把手机变成这个 APP）。</p>'}
     <p class="muted" style="margin-top:10px"><b>手动同步（备用）</b>：① 在本页导出备份文件；② 用数据线把文件复制到另一台设备；③ 在另一台设备打开本页导入时选「<b>合并导入</b>」——手机和电脑两边背的单词、学习状态、重点标记、复习进度都会合并在一起，<b>不会一者覆盖另一者</b>。数据保存在浏览器本地，建议定期导出备份。</p>
   </div>
   <div class="card"><h2>❓ 使用说明</h2>
@@ -762,8 +825,8 @@ function vMore(){
       <li><b>用时计时</b>：开始一组（背诵/重背/复习）自动计时但全程不显示，点「完成」后弹出本组用时，按背诵与复习分开排名（两者互不混合），各自给出今天和历史两个名次（用时短的名次靠前）与分位；「更多」里可分开查看背诵、复习的今日合计与历史用时列表，同步时两边记录会合并。</li>
       <li><b>每日计划</b>：设置考试日期后，每日新学量 = 剩余待学词数 ÷ 剩余天数（向上取整），进度按组（10 词）统计。</li>
       <li><b>导入</b>：英文重复时提示已存储并显示原释义，可选择补充或修改释义。</li>
-      <li><b>数据同步</b>：两台设备各自导出备份，数据线互拷后选「合并导入」：按英文识别同一个词，两边新加的词都保留；学习状态取更早的、复习进度与重点标记取并集、释义取最近编辑的；每日记录取较大值；外观主题各设备保持各自选择。也可选「覆盖导入」整体替换。</li>
-      <li><b>手机实时同步（推荐）</b>：双击「背单词.bat」启动同步服务，电脑浏览器自动打开；手机连同一个 WiFi，用浏览器打开屏幕上显示的地址，并「添加到主屏幕」当 APP 使用——两台设备共享同一份数据，实时同步。</li>
+      <li><b>数据同步（合并规则）</b>：按英文识别同一个词，两边新加的词都保留；学习状态取更早的、复习进度与重点标记取并集、释义取最近编辑的、一边删除的词在另一边也会删除（除非删除后重新添加）；每日记录取较大值；外观主题各设备保持各自选择。也可选「覆盖导入」整体替换。</li>
+      <li><b>手机 APP 实时同步（推荐）</b>：安装背单词 APP 后，电脑双击「背单词.bat」，手机连同一个 WiFi，在 APP「更多 → 数据同步」里填一次电脑地址即可——APP 每次打开自动同步、可手动同步，电脑端约 20 秒内自动收到手机的进度。未装 APP 时，也可用手机浏览器打开窗口里显示的地址并「添加到主屏幕」，效果相同。</li>
       <li><b>手机端</b>：把本 HTML 文件通过数据线拷贝到手机，用浏览器打开即可；界面自动适配手机屏幕，支持夜间模式。</li>
     </ul>
   </div>
@@ -784,10 +847,12 @@ function toast(msg){
 
 /* ================= 同步 / 维护 ================= */
 function exportData(){
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+  const text = JSON.stringify(state, null, 2), name = `背单词备份-${todayStr()}.json`;
+  try{ if(window.Beidan && Beidan.saveFile){ Beidan.saveFile(name, text); toast('备份已保存到手机「下载」目录'); return; } }catch(_){}
+  const blob = new Blob([text], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `背单词备份-${todayStr()}.json`;
+  a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   toast('备份文件已导出，可用数据线复制到另一台设备再导入');
@@ -838,7 +903,17 @@ function mergeStates(local, incoming){
   local.words.forEach(put);
   incoming.words.forEach(put);
   const merged = defaultState();
-  merged.words = [...map.values()];
+  { // 删除墓碑合并：同一词取更晚的删除时间；词本身比删除晚 → 词赢，墓碑作废
+    const dm = new Map();
+    [...(local.deletedEns || []), ...(incoming.deletedEns || [])].forEach(x => {
+      const p = dm.get(x.en); if(!p || (x.at || 0) > (p.at || 0)) dm.set(x.en, x);
+    });
+    merged.words = [...map.values()].filter(w => {
+      const d = dm.get((w.en || '').trim().toLowerCase());
+      return !(d && (d.at || 0) >= (Number(w.updatedAt) || 0));
+    });
+    merged.deletedEns = [...dm.values()].filter(d => !merged.words.some(w => (w.en || '').trim().toLowerCase() === d.en));
+  }
   new Set([...Object.keys(local.daily || {}), ...Object.keys(incoming.daily || {})]).forEach(d => {
     const a = local.daily[d] || Z, b = incoming.daily[d] || Z;
     merged.daily[d] = {
@@ -850,6 +925,7 @@ function mergeStates(local, incoming){
   });
   merged.settings.examDate = incoming.settings.examDate || local.settings.examDate || null;
   merged.settings.theme = local.settings.theme || 'auto'; // 外观是设备各自的偏好，不跟随备份
+  merged.settings.serverAddr = local.settings.serverAddr || ''; // 电脑地址是本机设置，合并时必须保留
   const seenAt = new Set(); // 用时记录：两边都保留（按时间戳去重）
   merged.times = [...(local.times || []), ...(incoming.times || [])]
     .sort((a,b) => a.at - b.at)
@@ -888,7 +964,7 @@ document.addEventListener('click', e => {
           <button class="btn" data-action="quit-yes">确认退出</button>
         </div>`);
       break;
-    case 'quit-yes': session = null; saveSession(); closeModal(); render(); break;
+    case 'quit-yes': session = null; saveSession(); setKeepAwake(false); closeModal(); render(); break;
     case 'modal-close': closeModal(); break;
     case 'dup-edit': {
       const w = state.words.find(x => x.id === el.dataset.id);
@@ -915,6 +991,10 @@ document.addEventListener('click', e => {
       if(pendingImport){ state = pendingImport; pendingImport = null; applyTheme(); save(); session = null; saveSession(); closeModal(); go('home'); toast('已覆盖导入'); }
       break;
     case 'usb-sync': usbSync(); break;
+    case 'serveraddr-save':
+      state.settings.serverAddr = ($('#serverAddr') ? $('#serverAddr').value : '') || '';
+      save(); render(); toast('已保存电脑地址');
+      break;
     case 'sample':
       showModal(`<h3>载入示例词库？</h3><p>将添加 ${SAMPLE.length} 个常用单词（英文重复的自动跳过）。</p>
         <div class="btnrow">
@@ -949,10 +1029,17 @@ document.addEventListener('click', e => {
         </div>`);
       break;
     }
-    case 'del-yes':
-      state.words = state.words.filter(w => w.id !== pendingDelId);
-      pendingDelId = null; save(); closeModal(); render(); toast('已删除');
+    case 'del-yes': {
+      const w = state.words.find(x => x.id === pendingDelId);
+      state.words = state.words.filter(x => x.id !== pendingDelId);
+      const k = w ? (w.en || '').trim().toLowerCase() : '';
+      if(k){ // 墓碑：同步后其它设备也会删除；重新添加（时间更晚）则自动失效
+        const d = state.deletedEns.find(x => x.en === k);
+        if(d) d.at = Date.now(); else state.deletedEns.push({ en: k, at: Date.now() });
+      }
+      pendingDelId = null; save(); closeModal(); render(); toast('已删除（同步后其它设备也会删除）');
       break;
+    }
   }
 });
 document.addEventListener('submit', e => {
@@ -4304,7 +4391,8 @@ const SEED_V2 = [["querulous","抱怨的，发牢骚的"],
   try{
     if(localStorage.getItem(LS + '.seed2')) return;
     let n = 0;
-    SEED_V2.forEach(function(pair){ if(!findWord(pair[0])){ addWord(pair[0], pair[1]); n++; } });
+    // updatedAt=1：种子词是占位数据，任何真实编辑（或删除墓碑）在合并时都能压过它，避免新设备播种"复活"已删除的词
+    SEED_V2.forEach(function(pair){ if(!findWord(pair[0])){ addWord(pair[0], pair[1], 1); n++; } });
     if(n){ save(); toast('已从截图词库导入 ' + n + ' 个新单词'); }
     localStorage.setItem(LS + '.seed2', '1');
   }catch(_){}

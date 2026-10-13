@@ -1,0 +1,7 @@
+com.zcz.fakerun.app-pngs-0 /home/zcz/myAPPs/fakeRun/app/build/generated/res/pngs/debug
+com.zcz.fakerun.app-resValues-1 /home/zcz/myAPPs/fakeRun/app/build/generated/res/resValues/debug
+com.zcz.fakerun.app-packageDebugResources-2 /home/zcz/myAPPs/fakeRun/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.zcz.fakerun.app-packageDebugResources-3 /home/zcz/myAPPs/fakeRun/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.zcz.fakerun.app-debug-4 /home/zcz/myAPPs/fakeRun/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.zcz.fakerun.app-debug-5 /home/zcz/myAPPs/fakeRun/app/src/debug/res
+com.zcz.fakerun.app-main-6 /home/zcz/myAPPs/fakeRun/app/src/main/res
